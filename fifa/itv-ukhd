@@ -1,0 +1,273 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Player</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/shaka-player.ui.min.js" crossorigin="anonymous"></script>  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/controls.min.css" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+  <style>  
+    * { margin: 0; padding: 0; box-sizing: border-box; }  
+    html, body {  
+      background: #000;  
+      height: 100vh;  
+      width: 100vw;  
+      overflow: hidden;  
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;  
+    }  
+    .shaka-video-container {  
+      position: absolute;  
+      inset: 0;  
+      width: 100%;  
+      height: 100%; 
+    }  
+    video {  
+      width: 100%;  
+      height: 100%;  
+      background: #000;  
+      object-fit: contain; 
+      transition: object-fit 0.4s ease-in-out; 
+    }  
+    .shaka-spinner-container { display: none !important; }
+    /* Watermark Logo CSS */
+    .watermark-logo {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+      width: 75px; 
+      height: auto;
+      z-index: 50;
+      opacity: 0.6; 
+      pointer-events: none; 
+      transition: opacity 0.3s;
+    }
+    .shaka-video-container:not(.shaka-controls-active) .watermark-logo {
+      opacity: 0.8; 
+    }
+    /* Custom Icon Buttons */
+    .custom-icon-btn {
+      background: none;
+      border: none;
+      padding: 0 5px;
+      color: rgba(255, 255, 255, 0.9);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      transition: color 0.2s, transform 0.2s;
+    }
+    .custom-icon-btn:hover {
+      color: #fff;
+      transform: scale(1.1);
+    }
+    /* Toast Message */
+    .toast-message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.8);
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-size: 16px;
+      font-weight: 500;
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* পপ-আপ ইফেক্ট */
+      z-index: 2000;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .toast-message.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    /* Settings Menu Dark Theme CSS */
+    .shaka-settings-menu, 
+    .shaka-overflow-menu {
+      background-color: rgba(15, 15, 15, 0.95) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      border-radius: 8px !important;
+      backdrop-filter: blur(5px);
+    }
+    .shaka-settings-menu button, 
+    .shaka-overflow-menu button {
+      color: #ffffff !important; 
+      background-color: transparent !important;
+      transition: background 0.2s;
+    }
+    .shaka-settings-menu button:hover, 
+    .shaka-overflow-menu button:hover {
+      background-color: rgba(255, 255, 255, 0.15) !important;
+    }
+    .shaka-settings-menu i, 
+    .shaka-overflow-menu i,
+    .shaka-settings-menu span, 
+    .shaka-overflow-menu span {
+      color: #ffffff !important; 
+    }
+  </style>  
+</head>  
+
+<body>  
+  <div class="shaka-video-container" id="video-container">  
+    <video autoplay playsinline muted preload="auto" id="video" poster="https://moviehubbd.top/YTuxeicX9ozFIYymDmXtRw/x6b/5z1iv8bzh/2b/f677.png"></video>  
+    <!-- Watermark Logo -->
+    <img src="https://moviehubbd.top/YTuxeicX9ozFIYymDmXtRw/x6b/5z1iv8bzh/2b/f677.png" class="watermark-logo" alt="Watermark">
+    <!-- Toast Message -->
+    <div id="toast" class="toast-message">Original</div>
+  </div>  
+  
+  <script>  
+    const video = document.getElementById('video');
+    const toast = document.getElementById('toast');
+    let toastTimeout;
+
+    const ratioModes = [
+      { mode: 'contain', name: 'Original', icon: 'aspect_ratio' },
+      { mode: 'fill', name: 'Stretch', icon: 'settings_overscan' },
+      { mode: 'cover', name: 'Zoom (Fill)', icon: 'crop_free' }
+    ];
+    let currentRatioIndex = 0;
+
+    function showToast(message) {
+      toast.innerText = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 1500); 
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {  
+      shaka.polyfill.installAll();  
+      if (!shaka.Player.isBrowserSupported()) return;  
+  
+      const container = document.getElementById('video-container');
+      const player = new shaka.Player();  
+      await player.attach(video); 
+
+      const ui = new shaka.ui.Overlay(player, container, video);  
+
+      ui.configure({  
+        controlPanelElements: [  
+          'play_pause', 'mute', 'volume', 'spacer', 'language', 'quality', 'fullscreen'  
+        ],
+        volumeBarColors: { base: 'rgba(255, 255, 255, 0.3)', level: '#e74c3c' },  
+        seekBarColors: {  
+          base: 'rgba(255, 255, 255, 0.3)',
+          buffered: 'rgba(255, 255, 255, 0.5)',
+          played: 'rgba(255, 0,0)'
+        }
+      });  
+
+      const fullscreenBtn = document.querySelector('.shaka-fullscreen-button');
+
+      // PiP Button
+      const pipIcon = document.createElement('button');
+      pipIcon.innerHTML = '<i class="material-icons-round" style="font-size:24px;">picture_in_picture_alt</i>';
+      pipIcon.classList.add('custom-icon-btn');
+      pipIcon.title = "Picture-in-Picture";
+      fullscreenBtn.parentNode.insertBefore(pipIcon, fullscreenBtn);
+
+      pipIcon.onclick = async (e) => {
+        e.stopPropagation();
+        try {
+          if (video !== document.pictureInPictureElement) await video.requestPictureInPicture();
+          else await document.exitPictureInPicture();
+        } catch (err) { console.log("PiP blocked or unsupported."); }
+      };
+
+            // Aspect Ratio Button
+      const ratioIcon = document.createElement('button');
+      ratioIcon.innerHTML = `<i class="material-icons-round" style="font-size:24px;">${ratioModes[currentRatioIndex].icon}</i>`;
+      ratioIcon.classList.add('custom-icon-btn');
+      ratioIcon.title = "Change Aspect Ratio";
+      fullscreenBtn.parentNode.insertBefore(ratioIcon, fullscreenBtn);
+
+      ratioIcon.onclick = (e) => {
+          e.stopPropagation(); 
+          currentRatioIndex = (currentRatioIndex + 1) % ratioModes.length;
+          const currentSetting = ratioModes[currentRatioIndex];
+          video.style.objectFit = currentSetting.mode;
+          ratioIcon.innerHTML = `<i class="material-icons-round" style="font-size:24px;">${currentSetting.icon}</i>`;
+          showToast(currentSetting.name);
+      };
+
+      // Auto Rotate to Landscape (Mobile only)
+      document.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement) {
+          try {
+             if (screen.orientation && screen.orientation.lock) {
+                 screen.orientation.lock('landscape').catch(() => {});
+             }
+          } catch(e) {}
+        } else {
+          try {
+             if (screen.orientation && screen.orientation.unlock) {
+                 screen.orientation.unlock();
+             }
+          } catch(e) {}
+        }
+      });
+
+      // DRM ClearKey
+      player.configure({
+        drm:{
+          clearKeys:{
+            // kid
+            "30089c52924f037b225b82c616fee2a5":
+            // key
+            "f55dc8b66ed4fc6753d6035ae7e17144"
+          }
+        }
+      });
+
+      // User-Agent Header
+      player.getNetworkingEngine().registerRequestFilter(
+        function(type, request) {
+          request.headers['User-Agent'] = 'Safari/537.36';
+        }
+      );
+
+      // Stream URL
+      const streamUrl = "https://backend.footfytv.live/proxy/direct?url=https://otte-qw.live.pv-cdn.net/iad-nitro/live/clients/dash/enc/0eiyyz8qzm/out/v1/dd17af8835fe4bd087d1a4e359b635d7/cenc.mpd";
+
+      try {  
+        await player.load(streamUrl);
+      } catch (error) {  
+        console.error(error);
+      }  
+
+      player.configure({
+        streaming: {
+          lowLatencyMode: false,
+          bufferingGoal: 10,
+          rebufferingGoal: 5,
+          bufferBehind: 10,
+          retryParameters: {
+            timeout: 15000,
+            maxAttempts: 5,
+            baseDelay: 1000,
+            backoffFactor: 2
+          }
+        },
+        manifest: {
+          retryParameters: {
+            timeout: 10000,
+            maxAttempts: 3
+          }
+        },
+        abr: {
+          enabled: true
+        }
+      });
+    });  
+  </script>
+
+</body>
+</html>
