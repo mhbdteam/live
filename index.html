@@ -1,273 +1,528 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Player</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/shaka-player.ui.min.js" crossorigin="anonymous"></script>  
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/controls.min.css" crossorigin="anonymous">
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-
-  <style>  
-    * { margin: 0; padding: 0; box-sizing: border-box; }  
-    html, body {  
-      background: #000;  
-      height: 100vh;  
-      width: 100vw;  
-      overflow: hidden;  
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;  
-    }  
-    .shaka-video-container {  
-      position: absolute;  
-      inset: 0;  
-      width: 100%;  
-      height: 100%; 
-    }  
-    video {  
-      width: 100%;  
-      height: 100%;  
-      background: #000;  
-      object-fit: contain; 
-      transition: object-fit 0.4s ease-in-out; /* স্মুথ ভিডিও ট্রানজিশন */
-    }  
-    .shaka-spinner-container { display: none !important; }
-    /* Watermark Logo CSS */
-    .watermark-logo {
-      position: absolute;
-      top: 15px;
-      right: 20px;
-      width: 75px; 
-      height: auto;
-      z-index: 50;
-      opacity: 0.6; 
-      pointer-events: none; 
-      transition: opacity 0.3s;
-    }
-    .shaka-video-container:not(.shaka-controls-active) .watermark-logo {
-      opacity: 0.8; 
-    }
-    /* Custom Icon Buttons */
-    .custom-icon-btn {
-      background: none;
-      border: none;
-      padding: 0 5px;
-      color: rgba(255, 255, 255, 0.9);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      transition: color 0.2s, transform 0.2s;
-    }
-    .custom-icon-btn:hover {
-      color: #fff;
-      transform: scale(1.1);
-    }
-    /* Toast Message */
-    .toast-message {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%) scale(0.8);
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 12px 24px;
-      border-radius: 30px;
-      font-size: 16px;
-      font-weight: 500;
-      pointer-events: none;
-      opacity: 0;
-      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* পপ-আপ ইফেক্ট */
-      z-index: 2000;
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
-      border: 1px solid rgba(255,255,255,0.1);
-    }
-    .toast-message.show {
-      opacity: 1;
-      transform: translate(-50%, -50%) scale(1);
-    }
-    /* Settings Menu Dark Theme CSS */
-    .shaka-settings-menu, 
-    .shaka-overflow-menu {
-      background-color: rgba(15, 15, 15, 0.95) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1) !important;
-      border-radius: 8px !important;
-      backdrop-filter: blur(5px);
-    }
-    .shaka-settings-menu button, 
-    .shaka-overflow-menu button {
-      color: #ffffff !important; 
-      background-color: transparent !important;
-      transition: background 0.2s;
-    }
-    .shaka-settings-menu button:hover, 
-    .shaka-overflow-menu button:hover {
-      background-color: rgba(255, 255, 255, 0.15) !important;
-    }
-    .shaka-settings-menu i, 
-    .shaka-overflow-menu i,
-    .shaka-settings-menu span, 
-    .shaka-overflow-menu span {
-      color: #ffffff !important; 
-    }
-  </style>  
-</head>  
-
-<body>  
-  <div class="shaka-video-container" id="video-container">  
-    <video autoplay playsinline muted preload="auto" id="video" poster="https://i.ibb.co.com/XxX8t7Kr/CRIC-FLIXS-LOGO.png"></video>  
-    <!-- Watermark Logo -->
-    <img src="https://i.ibb.co.com/XxX8t7Kr/CRIC-FLIXS-LOGO.png" class="watermark-logo" alt="Watermark">
-    <!-- Toast Message -->
-    <div id="toast" class="toast-message">Original</div>
-  </div>  
-  
-  <script>  
-    const video = document.getElementById('video');
-    const toast = document.getElementById('toast');
-    let toastTimeout;
-
-    const ratioModes = [
-      { mode: 'contain', name: 'Original', icon: 'aspect_ratio' },
-      { mode: 'fill', name: 'Stretch', icon: 'settings_overscan' },
-      { mode: 'cover', name: 'Zoom (Fill)', icon: 'crop_free' }
-    ];
-    let currentRatioIndex = 0;
-
-    function showToast(message) {
-      toast.innerText = message;
-      toast.classList.add('show');
-      clearTimeout(toastTimeout);
-      toastTimeout = setTimeout(() => {
-        toast.classList.remove('show');
-      }, 1500); 
-    }
-
-    document.addEventListener('DOMContentLoaded', async () => {  
-      shaka.polyfill.installAll();  
-      if (!shaka.Player.isBrowserSupported()) return;  
-  
-      const container = document.getElementById('video-container');
-      const player = new shaka.Player();  
-      await player.attach(video); 
-
-      const ui = new shaka.ui.Overlay(player, container, video);  
-
-      ui.configure({  
-        controlPanelElements: [  
-          'play_pause', 'mute', 'volume', 'spacer', 'language', 'quality', 'fullscreen'  
-        ],
-        volumeBarColors: { base: 'rgba(255, 255, 255, 0.3)', level: '#e74c3c' },  
-        seekBarColors: {  
-          base: 'rgba(255, 255, 255, 0.3)',
-          buffered: 'rgba(255, 255, 255, 0.5)',
-          played: 'rgba(255, 0,0)'
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MHBD Security System</title>
+    <style>
+        /* ==========================================================================
+           1. CORE GLOBAL STYLES (Theme Agnostic)
+           ========================================================================== */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
         }
-      });  
 
-      const fullscreenBtn = document.querySelector('.shaka-fullscreen-button');
-
-      // PiP Button
-      const pipIcon = document.createElement('button');
-      pipIcon.innerHTML = '<i class="material-icons-round" style="font-size:24px;">picture_in_picture_alt</i>';
-      pipIcon.classList.add('custom-icon-btn');
-      pipIcon.title = "Picture-in-Picture";
-      fullscreenBtn.parentNode.insertBefore(pipIcon, fullscreenBtn);
-
-      pipIcon.onclick = async (e) => {
-        e.stopPropagation();
-        try {
-          if (video !== document.pictureInPictureElement) await video.requestPictureInPicture();
-          else await document.exitPictureInPicture();
-        } catch (err) { console.log("PiP blocked or unsupported."); }
-      };
-
-            // Aspect Ratio Button
-      const ratioIcon = document.createElement('button');
-      ratioIcon.innerHTML = `<i class="material-icons-round" style="font-size:24px;">${ratioModes[currentRatioIndex].icon}</i>`;
-      ratioIcon.classList.add('custom-icon-btn');
-      ratioIcon.title = "Change Aspect Ratio";
-      fullscreenBtn.parentNode.insertBefore(ratioIcon, fullscreenBtn);
-
-      ratioIcon.onclick = (e) => {
-          e.stopPropagation(); 
-          currentRatioIndex = (currentRatioIndex + 1) % ratioModes.length;
-          const currentSetting = ratioModes[currentRatioIndex];
-          video.style.objectFit = currentSetting.mode;
-          ratioIcon.innerHTML = `<i class="material-icons-round" style="font-size:24px;">${currentSetting.icon}</i>`;
-          showToast(currentSetting.name);
-      };
-
-      // Auto Rotate to Landscape (Mobile only)
-      document.addEventListener('fullscreenchange', () => {
-        if (document.fullscreenElement) {
-          try {
-             if (screen.orientation && screen.orientation.lock) {
-                 screen.orientation.lock('landscape').catch(() => {});
-             }
-          } catch(e) {}
-        } else {
-          try {
-             if (screen.orientation && screen.orientation.unlock) {
-                 screen.orientation.unlock();
-             }
-          } catch(e) {}
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
-      });
 
-      // DRM ClearKey
-      player.configure({
-        drm:{
-          clearKeys:{
-            // kid
-            "83f81c4cc1443991543de4e22eea7586":
-            // key
-            "ddfd7ca653d6f35543d8edb3c688e20f"
-          }
+        /* Custom Scrollbar (Fallback) */
+        ::-webkit-scrollbar {
+            width: 8px;
         }
-      });
-
-      // User-Agent Header
-      player.getNetworkingEngine().registerRequestFilter(
-        function(type, request) {
-          request.headers['User-Agent'] = 'Safari/537.36';
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
         }
-      );
-
-      // Stream URL
-      const streamUrl = "https://backend.footfytv.live/proxy/direct?url=https://otte.live.fly.ww.aiv-cdn.net/gru-nitro/live/clients/dash/enc/ud6bnhthpj/out/v1/2639a2f4480f4269953de466d5f46463/cenc.mpd";
-
-      try {  
-        await player.load(streamUrl);
-      } catch (error) {  
-        console.error(error);
-      }  
-
-      player.configure({
-        streaming: {
-          lowLatencyMode: false,
-          bufferingGoal: 10,
-          rebufferingGoal: 5,
-          bufferBehind: 10,
-          retryParameters: {
-            timeout: 15000,
-            maxAttempts: 5,
-            baseDelay: 1000,
-            backoffFactor: 2
-          }
-        },
-        manifest: {
-          retryParameters: {
-            timeout: 10000,
-            maxAttempts: 3
-          }
-        },
-        abr: {
-          enabled: true
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
         }
-      });
-    });  
-  </script>
 
+        /* Global Structural Elements */
+        .theme-container {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            opacity: 0;
+            transition: opacity 0.8s ease-in-out;
+            z-index: 2;
+        }
+
+        .theme-container.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .card {
+            padding: 2.5rem;
+            border-radius: 24px;
+            text-align: center;
+            max-width: 90%;
+            width: 480px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            z-index: 10;
+            position: relative;
+        }
+
+        footer {
+            position: absolute;
+            bottom: 2rem;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            opacity: 0.7;
+            text-align: center;
+            width: 100%;
+            z-index: 10;
+        }
+
+        /* ==========================================================================
+           2. ANIMATIONS & EFFECTS (Glitch, Floating, Floating Emojis)
+           ========================================================================== */
+        @keyframes floatEmoji {
+            0% { transform: translateY(110vh) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
+        }
+
+        .emoji-particle {
+            position: absolute;
+            pointer-events: none;
+            font-size: 2rem;
+            z-index: 1;
+            bottom: -50px;
+            animation: floatEmoji linear infinite;
+        }
+
+        /* Subtle Glitch Text Effect */
+        .glitch-text {
+            position: relative;
+            animation: glitch-skew 4s infinite linear alternate-reverse;
+        }
+        .glitch-text::before, .glitch-text::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+        }
+        .glitch-text::before {
+            left: 2px;
+            text-shadow: -2px 0 #ff00c1;
+            clip: rect(44px, 450px, 56px, 0);
+            animation: glitch-anim 5s infinite linear alternate-reverse;
+        }
+        .glitch-text::after {
+            left: -2px;
+            text-shadow: -2px 0 #00fff9, 0 2px #ff00c1;
+            clip: rect(85px, 450px, 140px, 0);
+            animation: glitch-anim2 5s infinite linear alternate-reverse;
+        }
+
+        @keyframes glitch-anim {
+            0% { clip: rect(31px, 9999px, 94px, 0); }
+            10% { clip: rect(112px, 9999px, 76px, 0); }
+            20% { clip: rect(85px, 9999px, 5px, 0); }
+            30% { clip: rect(27px, 9999px, 115px, 0); }
+            40% { clip: rect(73px, 9999px, 29px, 0); }
+            50% { clip: rect(118px, 9999px, 145px, 0); }
+            60% { clip: rect(9px, 9999px, 43px, 0); }
+            70% { clip: rect(58px, 9999px, 132px, 0); }
+            80% { clip: rect(98px, 9999px, 84px, 0); }
+            90% { clip: rect(142px, 9999px, 11px, 0); }
+            100% { clip: rect(64px, 9999px, 120px, 0); }
+        }
+        @keyframes glitch-anim2 {
+            0% { clip: rect(76px, 9999px, 116px, 0); }
+            11% { clip: rect(5px, 9999px, 140px, 0); }
+            25% { clip: rect(132px, 9999px, 9px, 0); }
+            45% { clip: rect(44px, 9999px, 78px, 0); }
+            65% { clip: rect(97px, 9999px, 122px, 0); }
+            85% { clip: rect(13px, 9999px, 54px, 0); }
+            100% { clip: rect(111px, 9999px, 91px, 0); }
+        }
+        @keyframes glitch-skew {
+            0% { transform: skew(1deg); }
+            10% { transform: skew(-1deg); }
+            100% { transform: skew(0deg); }
+        }
+
+        /* ==========================================================================
+           3. THEME 1: FUNNY ACCESS DENIED (Glassmorphism & Neon Red)
+           ========================================================================== */
+        #theme-denied {
+            background: radial-gradient(circle at center, #3a0007 0%, #0f0014 100%);
+        }
+
+        #theme-denied .card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 0, 85, 0.2);
+            box-shadow: 0 0 40px rgba(255, 0, 85, 0.15), inset 0 0 20px rgba(255,255,255,0.05);
+            animation: glassPulse 4s ease-in-out infinite alternate;
+        }
+
+        @keyframes glassPulse {
+            0% { border-color: rgba(255, 0, 85, 0.2); box-shadow: 0 0 40px rgba(255, 0, 85, 0.15); }
+            100% { border-color: rgba(186, 0, 255, 0.4); box-shadow: 0 0 60px rgba(186, 0, 255, 0.25); }
+        }
+
+        #theme-denied h1 {
+            color: #ff2a5f;
+            font-size: 2.2rem;
+            font-weight: 900;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 10px rgba(255, 42, 95, 0.6);
+        }
+
+        #theme-denied h2 {
+            font-size: 1.4rem;
+            margin-bottom: 1.5rem;
+            color: #fff;
+        }
+
+        #theme-denied p {
+            color: #ccc;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .status-badge {
+            display: inline-block;
+            background: rgba(255, 42, 95, 0.1);
+            border: 1px solid #ff2a5f;
+            padding: 0.5rem 1.2rem;
+            border-radius: 50px;
+            font-weight: bold;
+            color: #ff2a5f;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            text-shadow: 0 0 5px rgba(255, 42, 95, 0.4);
+        }
+
+        /* ==========================================================================
+           4. THEME 2: HACKER TERMINAL (Matrix Rain & Retro Terminal)
+           ========================================================================== */
+        #theme-hacker {
+            background: #000;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        #canvas-matrix {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            opacity: 0.35;
+        }
+
+        #theme-hacker .card {
+            background: rgba(0, 10, 2, 0.85);
+            border: 2px solid #00ff33;
+            box-shadow: 0 0 30px rgba(0, 255, 51, 0.2);
+            border-radius: 4px; /* Hard retro edges */
+            text-align: left;
+        }
+
+        #theme-hacker h1 {
+            color: #00ff33;
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            text-shadow: 0 0 5px #00ff33;
+            border-bottom: 1px solid #00ff33;
+            padding-bottom: 0.5rem;
+        }
+
+        .terminal-text {
+            color: #00ff33;
+            font-size: 1rem;
+            line-height: 1.6;
+            min-height: 120px;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            height: 18px;
+            background: #00ff33;
+            animation: blink 0.8s infinite steps(2);
+            vertical-align: middle;
+            margin-left: 3px;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            background: #002204;
+            border: 1px solid #00ff33;
+            height: 24px;
+            margin: 1.5rem 0;
+            position: relative;
+            display: none;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #00ff33;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        /* ==========================================================================
+           5. THEME 3: MEME MODE (Neon Blue/Purple & Bounce)
+           ========================================================================== */
+        #theme-meme {
+            background: radial-gradient(circle at center, #0c1033 0%, #02030d 100%);
+        }
+
+        #theme-meme .card {
+            background: linear-gradient(135deg, rgba(20, 30, 80, 0.6) 0%, rgba(10, 5, 30, 0.7) 100%);
+            border: 2px solid #00d2ff;
+            box-shadow: 0 0 40px rgba(0, 210, 255, 0.3);
+            animation: memeBounce 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            transform: scale(0.3);
+        }
+
+        @keyframes memeBounce {
+            to { transform: scale(1); }
+        }
+
+        #theme-meme h1 {
+            color: #00d2ff;
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 15px rgba(0, 210, 255, 0.6);
+        }
+
+        #theme-meme h2 {
+            color: #9d4edd;
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .glow-btn {
+            display: inline-block;
+            margin-top: 1.5rem;
+            padding: 0.8rem 2rem;
+            background: linear-gradient(45deg, #00d2ff, #9d4edd);
+            border: none;
+            border-radius: 50px;
+            color: #fff;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(0, 210, 255, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .glow-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0 30px rgba(157, 78, 221, 0.7);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="theme-denied" class="theme-container">
+        <div class="card">
+            <h1 class="glitch-text" data-text="🤡 ACCESS DENIED">🤡 ACCESS DENIED</h1>
+            <h2>Congratulations!</h2>
+            <p>You successfully stole...<br><strong>Absolutely Nothing. 😂</strong></p>
+            <div class="status-badge">🔒 Funny MHBD Server: Protected</div>
+            <p style="font-size: 0.9rem; margin-top: 1.5rem; color: #ff5f7e;">404 Brain Not Found ☠️<br>Nice Try Bro 😎</p>
+        </div>
+        <footer>Funny MHBD Security System</footer>
+    </div>
+
+
+    <div id="theme-hacker" class="theme-container">
+        <canvas id="canvas-matrix"></canvas>
+        <div class="card">
+            <h1 class="glitch-text" data-text="ACCESSING SERVER...">ACCESSING SERVER...</h1>
+            <div class="terminal-text" id="terminal-output"></div>
+            <div class="progress-bar-container" id="hacker-progress-container">
+                <div class="progress-bar" id="hacker-progress"></div>
+            </div>
+        </div>
+        <footer>Funny MHBD Security System | Protected Landing Page 🔒</footer>
+    </div>
+
+
+    <div id="theme-meme" class="theme-container">
+        <div class="card">
+            <h1 class="glitch-text" data-text="😂 SURPRISE! 😂">😂 SURPRISE! 😂</h1>
+            <h2>You thought this was the server?</h2>
+            <p>Nah Bro... You just opened the decoration page. 🎭</p>
+            <p style="color: #00d2ff; font-weight: bold; margin-top: 1rem;">The real server is sleeping behind encryption. 😴🔒</p>
+            <button class="glow-btn" onclick="alert('Nice try, but clicking this does absolutely nothing.')">Better luck next time</button>
+        </div>
+        <footer>Nice Try 😎 | Funny MHBD</footer>
+    </div>
+
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            // Randomly select one of the 3 themes (0, 1, or 2)
+            const randomThemeIndex = Math.floor(Math.random() * 3);
+            const containers = [
+                document.getElementById('theme-denied'),
+                document.getElementById('theme-hacker'),
+                document.getElementById('theme-meme')
+            ];
+
+            // Activate chosen theme layer
+            const activeContainer = containers[randomThemeIndex];
+            activeContainer.classList.add('active');
+
+            // --- Theme Specific Initializers ---
+            if (randomThemeIndex === 0) {
+                initEmojiParticles(activeContainer, ['😂', '🤣', '🤡', '💀', '🔒']);
+            } else if (randomThemeIndex === 1) {
+                initMatrixRain();
+                runHackerTerminal();
+            } else if (randomThemeIndex === 2) {
+                initEmojiParticles(activeContainer, ['😂', '🎭', '😴', '🔒', '😎', '💥']);
+            }
+        });
+
+        /* ==========================================================================
+           PARTICLE GENERATOR (Used for Theme 1 and Theme 3)
+           ========================================================================== */
+        function initEmojiParticles(container, emojis) {
+            const particleCount = 20;
+            for (let i = 0; i < particleCount; i++) {
+                const span = document.createElement('span');
+                span.classList.add('emoji-particle');
+                span.innerText = emojis[Math.floor(Math.random() * emojis.length)];
+                
+                // Randomize positions, scale and animations
+                span.style.left = Math.random() * 100 + 'vw';
+                span.style.animationDelay = Math.random() * 8 + 's';
+                span.style.animationDuration = 5 + Math.random() * 7 + 's';
+                span.style.fontSize = 1.2 + Math.random() * 1.5 + 'rem';
+                
+                container.appendChild(span);
+            }
+        }
+
+        /* ==========================================================================
+           MATRIX DIGITAL RAIN ENGINE (Used exclusively for Theme 2)
+           ========================================================================== */
+        function initMatrixRain() {
+            const canvas = document.getElementById('canvas-matrix');
+            const ctx = canvas.getContext('2d');
+
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            const katakana = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ1234567890ABCDEF';
+            const alphabet = katakana.split('');
+
+            const fontSize = 16;
+            let columns = canvas.width / fontSize;
+            let rainDrops = Array(Math.floor(columns)).fill(1);
+
+            window.addEventListener('resize', () => {
+                columns = canvas.width / fontSize;
+                rainDrops = Array(Math.floor(columns)).fill(1);
+            });
+
+            function draw() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#0F0';
+                ctx.font = fontSize + 'px monospace';
+
+                for (let i = 0; i < rainDrops.length; i++) {
+                    const text = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    ctx.fillText(text, i * fontSize, rainDrops[i] * fontSize);
+
+                    if (rainDrops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                        rainDrops[i] = 0;
+                    }
+                    rainDrops[i]++;
+                }
+            }
+            setInterval(draw, 30);
+        }
+
+        /* ==========================================================================
+           RETRO TERMINAL TYPING & LOADING SEQUENCE (Used for Theme 2)
+           ========================================================================== */
+        function runHackerTerminal() {
+            const outputElement = document.getElementById('terminal-output');
+            const progressContainer = document.getElementById('hacker-progress-container');
+            const progressBar = document.getElementById('hacker-progress');
+
+            // Audio Cue Notice: HTML5 audio requires user interaction to execute.
+            // Placeholder for audio triggers: 
+            // const hackSound = new Audio('path_to_audio.mp3'); hackSound.play();
+
+            const lines = [
+                { text: "> Checking Token...", delay: 400 },
+                { text: "> Token Validated.", delay: 800 },
+                { text: "> Decrypting core database strings...", delay: 1300 },
+                { showProgress: true, delay: 1500 },
+                { text: "<span style='color:#ff2a5f; font-weight:bold;'>[FATAL] DECRYPTION FAILED.</span>", delay: 3200 },
+                { text: "> Reason: Skill Issue 😂", delay: 3900 },
+                { text: "> Nothing Interesting Here. Protected Landing Page.", delay: 4500 }
+            ];
+
+            let lineIndex = 0;
+
+            function printNextLine() {
+                if (lineIndex >= lines.length) {
+                    outputElement.innerHTML += '<span class="cursor"></span>';
+                    return;
+                }
+
+                const current = lines[lineIndex];
+
+                setTimeout(() => {
+                    if (current.showProgress) {
+                        progressContainer.style.display = 'block';
+                        let width = 0;
+                        const interval = setInterval(() => {
+                            if (width >= 100) {
+                                clearInterval(interval);
+                                lineIndex++;
+                                printNextLine();
+                            } else {
+                                width += 5;
+                                progressBar.style.width = width + '%';
+                            }
+                        }, 80);
+                    } else {
+                        outputElement.innerHTML += (outputElement.innerHTML ? '<br>' : '') + current.text;
+                        lineIndex++;
+                        printNextLine();
+                    }
+                }, lineIndex === 0 ? 0 : lines[lineIndex].delay - lines[lineIndex - 1].delay);
+            }
+
+            printNextLine();
+        }
+    </script>
 </body>
 </html>
